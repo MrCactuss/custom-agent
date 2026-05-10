@@ -5,7 +5,7 @@ from google.genai import types
 import argparse 
 
 def get_api_key():
-    load_dotenv()
+    load_dotenv() 
     api_key = os.environ.get("GEMINI_API_KEY")
     if api_key == None:
         raise RuntimeError("No API key detected!")
