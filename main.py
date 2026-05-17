@@ -5,7 +5,7 @@ from google.genai import types
 import argparse 
 
 from prompts import system_prompt 
-from functions.call_function import available_functions
+from functions.call_function import available_functions, call_function
 
 def get_api_key():
     load_dotenv() 
@@ -19,11 +19,9 @@ def get_user_input():
     parser.add_argument("user_prompt", type=str, help="User prompt")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     args = parser.parse_args()
-
     return args
 
 def create_client():
-    # Creates en instance of an Gemini client
     api_key = get_api_key()
     client = genai.Client(api_key=api_key)
     return client
@@ -38,20 +36,27 @@ def generate_content(client, messages, verbose):
     )
 
     if response.usage_metadata != None:
-        if verbose == True:
+        if verbose:
             print(f"User prompt: {messages[0].parts[0].text}")
             print(f"Prompt tokens: {response.usage_metadata.prompt_token_count} \nResponse tokens: {response.usage_metadata.candidates_token_count}")
-            if response.function_calls != None:
-                for function_call in response.function_calls:
-                    f"Calling function: {function_call.name}({function_call.args})"
+
+        if response.function_calls != None:
+            for function_call in response.function_calls:
+                f"Calling function: {function_call.name}({function_call.args})"
+            
+            function_call_result = call_function(function_call, verbose)
+
+            if not function_call_result.parts:
+                raise Exception("Empty parts list")
+            elif function_call_result.parts[0].function_response == None:
+                raise Exception("No function response in parts")
+            elif function_call_result.parts[0].function_response.response == None:
+                raise Exception("No result in function response")
             else:
-                print(response.text)
-        else:
-            if response.function_calls != None:
-                for function_call in response.function_calls:
-                    print(f"Calling function: {function_call.name}({function_call.args})")
-            else:
-                print(response.text)
+                list_of_function_results = []
+                list_of_function_results.append(function_call_result.parts[0])
+            if verbose:
+                print(f"-> {function_call_result.parts[0].function_response.response}")
 
     else:
         raise RuntimeError("Possible failed API request")
