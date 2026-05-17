@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -41,22 +42,29 @@ def generate_content(client, messages, verbose):
             print(f"Prompt tokens: {response.usage_metadata.prompt_token_count} \nResponse tokens: {response.usage_metadata.candidates_token_count}")
 
         if response.function_calls != None:
+            list_of_function_results = []
             for function_call in response.function_calls:
-                f"Calling function: {function_call.name}({function_call.args})"
+                print(f"Calling function: {function_call.name}({function_call.args})")
+                function_call_result = call_function(function_call, verbose)
             
-            function_call_result = call_function(function_call, verbose)
-
-            if not function_call_result.parts:
-                raise Exception("Empty parts list")
-            elif function_call_result.parts[0].function_response == None:
-                raise Exception("No function response in parts")
-            elif function_call_result.parts[0].function_response.response == None:
-                raise Exception("No result in function response")
-            else:
-                list_of_function_results = []
+                if not function_call_result.parts:
+                    raise Exception("Empty parts list")
+                if function_call_result.parts[0].function_response == None:
+                    raise Exception("No function response in parts")
+                if function_call_result.parts[0].function_response.response == None:
+                    raise Exception("No result in function response")
+                
                 list_of_function_results.append(function_call_result.parts[0])
-            if verbose:
-                print(f"-> {function_call_result.parts[0].function_response.response}")
+
+                if verbose:
+                    print(f"-> {function_call_result.parts[0].function_response.response}")
+
+            return response.candidates, list_of_function_results
+        
+        else:
+            print("Final response-")
+            print(response.text)
+            return None, None
 
     else:
         raise RuntimeError("Possible failed API request")
@@ -65,9 +73,22 @@ def generate_content(client, messages, verbose):
 def main():
     user_input = get_user_input()
     messages = [types.Content(role="user", parts=[types.Part(text=user_input.user_prompt)])]
-
     client = create_client()
-    generate_content(client, messages, user_input.verbose)
+
+    for _ in range(20):
+        response_candidates, list_of_function_results = generate_content(client, messages, user_input.verbose)
+        if response_candidates != None:
+            for candidate in response_candidates:
+                messages.append(candidate.content)
+        messages.append(types.Content(role="user", parts=list_of_function_results))
+
+        if response_candidates == None:
+            print("Function calls finished. Final response received. ")
+            break
+    
+    else:
+        print("Function call limit reached. Stopping. ")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
